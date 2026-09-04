@@ -1,0 +1,1002 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>html{color-scheme:light}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+</head>
+<body>
+<title>Explorador Inocente</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fahkwang:wght@400;500;600&display=swap">
+<!-- D3 v7, pinned — added for the map. Only new library on the page. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<style>
+  /* ---- Light palette (complete, on bare :root) ---- */
+  :root {
+    color-scheme: light;
+    --ground:        #ffffff;
+    --surface:       #ffffff;
+    --ink:           #16264a;
+    --ink-2:         #46566e;
+    --ink-muted:     #8496ad;
+    --hairline:      #dde5ef;
+    --rule-strong:   #16264a;
+    --track:         #eef3f9;
+    --data:          #1f5fd1;
+    --data-hover:    #104281;
+    --band-1:        #86b6ef;
+    --band-2:        #4a90e4;
+    --band-3:        #2a78d6;
+    --band-4:        #1c5cab;
+    --band-5:        #104281;
+    --heat-0:        #eef3f9;
+    --heat-1:        #104281;
+    --chip:          #eef3f9;
+    --focus:         #1f5fd1;
+
+    /* ---- Map tokens ----
+       These now intentionally MATCH the tokens above one-for-one — the
+       whole page was recolored to the blue/navy palette from the Casos
+       screenshot, so the map's palette and the page's palette are the
+       same palette. Left as separate --map- variables (rather than
+       merged into the ones above) so the map's CSS/JS keeps working
+       unchanged and so the map can still diverge later without touching
+       the rest of the page.
+       Still true from before: no dark-mode equivalents exist. Dark mode
+       (below) still uses the OLD red palette — that mismatch is real and
+       unresolved, not an oversight; flag it if you want it fixed. */
+    --map-band:      #eef3f9;
+    --map-navy:      #16264a;
+    --map-slate:     #46566e;
+    --map-muted:     #8496ad;
+    --map-accent:    #1f5fd1;
+    --map-hairline:  #dde5ef;
+    --map-sea:       #f7fafd;
+    --map-nodata:    #e8edf4;
+    --map-bin1:      #86b6ef;
+    --map-bin2:      #4a90e4;
+    --map-bin3:      #2a78d6;
+    --map-bin4:      #1c5cab;
+    --map-bin5:      #104281;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --ground:      #141312;
+      --surface:     #141312;
+      --ink:         #f7f5f3;
+      --ink-2:       #b8b3ad;
+      --ink-muted:   #8a8681;
+      --hairline:    #2b2926;
+      --rule-strong: #f7f5f3;
+      --track:       #221f1d;
+      --data:        #e56a5a;
+      --data-hover:  #f5a99c;
+      --band-1:      #8b2018;
+      --band-2:      #b32a1e;
+      --band-3:      #d0392c;
+      --band-4:      #e56a5a;
+      --band-5:      #f5a99c;
+      --heat-0:      #2b1512;
+      --heat-1:      #f5a99c;
+      --chip:        #221f1d;
+      --focus:       #f7f5f3;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --ground:      #141312;
+    --surface:     #141312;
+    --ink:         #f7f5f3;
+    --ink-2:       #b8b3ad;
+    --ink-muted:   #8a8681;
+    --hairline:    #2b2926;
+    --rule-strong: #f7f5f3;
+    --track:       #221f1d;
+    --data:        #e56a5a;
+    --data-hover:  #f5a99c;
+    --band-1:      #8b2018;
+    --band-2:      #b32a1e;
+    --band-3:      #d0392c;
+    --band-4:      #e56a5a;
+    --band-5:      #f5a99c;
+    --heat-0:      #2b1512;
+    --heat-1:      #f5a99c;
+    --chip:        #221f1d;
+    --focus:       #f7f5f3;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size: 15px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 40px 24px 72px;
+    display: flex;
+    flex-direction: column;
+    gap: 36px;
+  }
+
+  /* ---- Masthead ---- */
+  .masthead { display: flex; flex-direction: column; gap: 10px; }
+  .masthead h1 {
+    font-family: Fahkwang, Georgia, serif;
+    font-weight: 500;
+    font-size: clamp(30px, 4.5vw, 44px);
+    line-height: 1.1;
+    letter-spacing: -0.01em;
+    margin: 0;
+    text-wrap: balance;
+  }
+  .standfirst {
+    margin: 0;
+    max-width: 62ch;
+    color: var(--ink-2);
+    font-size: 15px;
+  }
+  .sourceline {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+    font-size: 12px; color: var(--ink-muted);
+    padding-top: 12px; border-top: 2px solid var(--rule-strong);
+  }
+  .dot { width: 3px; height: 3px; border-radius: 50%; background: currentColor; }
+  #sync-state { font-variant-numeric: tabular-nums; }
+
+  /* ---- Filter row (one row, above everything it scopes) ---- */
+  .filterbar {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+    min-height: 34px;
+  }
+  .filterbar .label {
+    font-size: 11px; letter-spacing: 0.09em; text-transform: uppercase;
+    color: var(--ink-muted);
+  }
+  .chip {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: var(--chip); color: var(--ink);
+    border: 1px solid var(--hairline); border-radius: 2px;
+    padding: 5px 8px 5px 10px; font-size: 13px;
+    cursor: pointer; font-family: inherit;
+  }
+  .chip:hover { border-color: var(--rule-strong); }
+  .chip .x { color: var(--ink-muted); font-size: 15px; line-height: 1; }
+  .chip:hover .x { color: var(--data); }
+  .chip-reset { background: none; }
+  .no-filter { font-size: 13px; color: var(--ink-muted); }
+
+  /* ---- Stat tiles ---- */
+  .tiles {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px;
+    background: var(--hairline);
+    border-block: 1px solid var(--hairline);
+  }
+  .tile { background: var(--surface); padding: 20px 20px 22px; display: flex; flex-direction: column; gap: 4px; }
+  .tile .k {
+    font-size: 11px; letter-spacing: 0.09em; text-transform: uppercase;
+    color: var(--ink-muted);
+  }
+  .tile .v {
+    font-size: clamp(34px, 5.5vw, 46px); font-weight: 600; line-height: 1;
+    letter-spacing: -0.02em;
+    /* proportional figures on hero numbers — no tabular-nums here */
+  }
+  .tile .sub { font-size: 12px; color: var(--ink-2); }
+
+  /* ---- Chart blocks ---- */
+  .grid2 { display: grid; grid-template-columns: 1.15fr 1fr; gap: 36px; align-items: start; }
+  @media (max-width: 800px) { .grid2 { grid-template-columns: 1fr; } .tiles { grid-template-columns: 1fr; } }
+
+  .block { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+  .block > header { display: flex; flex-direction: column; gap: 2px; }
+  .block h2 {
+    font-family: Fahkwang, Georgia, serif;
+    font-weight: 500; font-size: 18px; margin: 0; letter-spacing: -0.005em;
+  }
+  .block .hint { font-size: 12px; color: var(--ink-muted); }
+
+  /* Horizontal bars */
+  .rows { display: flex; flex-direction: column; gap: 2px; }
+  .row {
+    display: grid; grid-template-columns: 108px 1fr 30px;
+    align-items: center; gap: 10px;
+    background: none; border: 0; padding: 4px 0; margin: 0;
+    font: inherit; color: inherit; text-align: left; cursor: pointer; width: 100%;
+  }
+  .row .name { font-size: 13px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row .track { background: var(--track); height: 16px; position: relative; }
+  .row .fill { display: block; background: var(--data); height: 100%; border-radius: 0 2px 2px 0; transition: width .18s ease; }
+  .row .n { font-size: 13px; color: var(--ink-2); text-align: right; font-variant-numeric: tabular-nums; }
+  .row:hover .name, .row:hover .n { color: var(--ink); }
+  .row:hover .fill { background: var(--data-hover); }
+  .row.off { opacity: .34; }
+  .row.on .name, .row.on .n { color: var(--ink); font-weight: 600; }
+
+  /* Year columns */
+  .years { display: flex; align-items: flex-end; gap: 2px; height: 128px; }
+  .yr {
+    flex: 1 1 0; min-width: 0; display: flex; flex-direction: column;
+    justify-content: flex-end; align-items: stretch; height: 100%;
+    background: none; border: 0; padding: 0; margin: 0; cursor: pointer;
+  }
+  .yr .col { background: var(--data); border-radius: 2px 2px 0 0; min-height: 1px; transition: height .18s ease; }
+  .yr .col.zero { background: var(--track); height: 2px !important; border-radius: 0; }
+  .yr:hover .col { background: var(--data-hover); }
+  .yr.off { opacity: .34; }
+  .yr.on .col { background: var(--data-hover); }
+  .yraxis {
+    display: flex; gap: 2px; margin-top: 6px;
+    font-size: 10px; color: var(--ink-muted); font-variant-numeric: tabular-nums;
+  }
+  .yraxis span { flex: 1 1 0; min-width: 0; text-align: center; }
+
+  /* Duration bands */
+  .bands { display: flex; flex-direction: column; gap: 2px; }
+  .band {
+    display: grid; grid-template-columns: 92px 1fr 30px; align-items: center; gap: 10px;
+    background: none; border: 0; padding: 4px 0; margin: 0;
+    font: inherit; color: inherit; text-align: left; cursor: pointer; width: 100%;
+  }
+  .band .name { font-size: 13px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+  .band .track { background: var(--track); height: 16px; }
+  .band .fill { display: block; height: 100%; border-radius: 0 2px 2px 0; transition: width .18s ease; }
+  .band .n { font-size: 13px; color: var(--ink-2); text-align: right; font-variant-numeric: tabular-nums; }
+  .band:hover .name, .band:hover .n { color: var(--ink); }
+  .band.off { opacity: .34; }
+  .band.on .name, .band.on .n { color: var(--ink); font-weight: 600; }
+
+  /* Legend for the ordered bands */
+  .scale { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--ink-muted); }
+  .scale .swatches { display: flex; gap: 2px; }
+  .scale i { width: 22px; height: 8px; display: block; }
+
+  /* ---- Table ---- */
+  .tablewrap { overflow-x: auto; border-top: 2px solid var(--rule-strong); }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  thead th {
+    text-align: left; font-size: 11px; letter-spacing: 0.07em; text-transform: uppercase;
+    color: var(--ink-muted); font-weight: 600; padding: 10px 12px 10px 0;
+    border-bottom: 1px solid var(--hairline); white-space: nowrap;
+    background: none; cursor: pointer; user-select: none;
+  }
+  thead th:hover { color: var(--ink); }
+  thead th[aria-sort="descending"], thead th[aria-sort="ascending"] { color: var(--ink); }
+  thead th .caret { color: var(--data); }
+  tbody td { padding: 9px 12px 9px 0; border-bottom: 1px solid var(--hairline); vertical-align: baseline; }
+  tbody tr:hover td { background: var(--track); }
+  td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  td.nombre { font-weight: 500; }
+  .heatcell { display: inline-flex; align-items: center; gap: 8px; }
+  .heatcell .sw { width: 26px; height: 10px; flex: none; }
+  .empty { padding: 28px 0; color: var(--ink-muted); font-size: 14px; }
+
+  /* ---- Footnote ---- */
+  .foot {
+    font-size: 12px; color: var(--ink-muted); border-top: 1px solid var(--hairline);
+    padding-top: 14px; display: flex; flex-direction: column; gap: 6px; max-width: 72ch;
+  }
+  .foot strong { color: var(--ink-2); font-weight: 600; }
+
+  /* ---- Tooltip ---- */
+  #tip {
+    position: fixed; z-index: 20; pointer-events: none; opacity: 0;
+    background: var(--ink); color: var(--ground);
+    padding: 6px 9px; border-radius: 2px; font-size: 12px; line-height: 1.35;
+    transition: opacity .12s ease; max-width: 240px;
+  }
+  #tip.show { opacity: 1; }
+  #tip b { font-weight: 600; }
+
+  :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+  /* Hidden per request — kept in the DOM (not deleted) so the JS that
+     writes into #sync-state and #filterbar doesn't throw on a missing
+     element. */
+  .sourceline, .filterbar { display: none; }
+
+  /* ---- Map (Step 1 scaffold — shapes only, no filter logic yet) ---- */
+  .map-card {
+    background: var(--map-sea); border: 1px solid var(--map-hairline);
+    border-radius: 4px; padding: 8px;
+  }
+  #map { display: block; width: 100%; height: auto; }
+  /* No `fill` here on purpose — a CSS fill would override the per-country
+     fill attribute D3 sets, and you'd get a blank one-color map despite
+     correct data. This bit cost real debugging time last round; don't
+     reintroduce it. */
+  .country { stroke: var(--map-sea); stroke-width: 0.6; }
+  .country.has-data { cursor: pointer; }
+  .country.has-data:hover { stroke: var(--map-navy); stroke-width: 1.2; }
+  .country.selected { stroke: var(--map-navy); stroke-width: 1.6; }
+  .country.dimmed { opacity: 0.35; }
+  .map-legend {
+    display: flex; align-items: center; gap: 10px; padding: 10px 6px 0;
+    font-size: 12px; color: var(--map-muted);
+  }
+  .map-legend .swatches { display: flex; gap: 2px; }
+  .map-legend i { width: 30px; height: 10px; display: block; border-radius: 1px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; }
+  }
+</style>
+
+<div class="wrap">
+
+  <header class="masthead">
+    <h1>Explorador de casos</h1>
+    <p class="standfirst">
+      Condenas injustas documentadas en América Latina. Haz clic en cualquier barra
+      para filtrar todo el tablero a la vez; vuelve a hacer clic para quitar el filtro.
+    </p>
+    <div class="sourceline">
+      <span>Fuente: inocente.org</span>
+      <span class="dot"></span>
+      <span id="sync-state">Cargando datos…</span>
+    </div>
+  </header>
+
+  <div class="filterbar" id="filterbar"></div>
+
+  <section class="tiles" aria-label="Resumen">
+    <div class="tile">
+      <span class="k">Casos</span>
+      <span class="v" id="stat-casos">—</span>
+      <span class="sub" id="stat-casos-sub">&nbsp;</span>
+    </div>
+    <div class="tile">
+      <span class="k">Años de vida perdidos</span>
+      <span class="v" id="stat-anios">—</span>
+      <span class="sub" id="stat-anios-sub">&nbsp;</span>
+    </div>
+    <div class="tile">
+      <span class="k">Promedio por persona</span>
+      <span class="v" id="stat-prom">—</span>
+      <span class="sub" id="stat-prom-sub">&nbsp;</span>
+    </div>
+  </section>
+
+  <!-- ---- Map (Step 1 scaffold) ----
+       Shapes only for now — every country renders in --map-nodata gray.
+       No fill-by-count and no click→filter yet. That's Step 2/3, and it
+       belongs in the SAME <script> closure below as renderPais() etc.
+       (see the big TODO comment near GEO_TO_ES) — filters, slice, toggle,
+       and renderAll are all private to that closure, so a separate
+       <script> tag could not reach them even if it tried. -->
+  <section class="block">
+    <header>
+      <h2>Mapa de casos</h2>
+      <span class="hint">Pendiente: conectar al filtro compartido (Paso 2–3)</span>
+    </header>
+    <div class="map-card"><svg id="map" role="img" aria-label="Mapa de casos por país"></svg></div>
+    <div class="map-legend">
+      <span>Menos casos</span>
+      <span class="swatches">
+        <i style="background:var(--map-bin1)"></i><i style="background:var(--map-bin2)"></i><i style="background:var(--map-bin3)"></i><i style="background:var(--map-bin4)"></i><i style="background:var(--map-bin5)"></i>
+      </span>
+      <span>Más casos</span>
+    </div>
+  </section>
+
+  <div class="grid2">
+    <section class="block">
+      <header>
+        <h2>Casos por país</h2>
+        <span class="hint">13 países · clic para filtrar</span>
+      </header>
+      <div class="rows" id="chart-pais"></div>
+    </section>
+
+    <section class="block">
+      <header>
+        <h2>Tiempo servido</h2>
+        <span class="hint">Bandas ordenadas de duración</span>
+      </header>
+      <div class="bands" id="chart-banda"></div>
+      <div class="scale">
+        <span>Menos tiempo</span>
+        <span class="swatches">
+          <i style="background:var(--band-1)"></i><i style="background:var(--band-2)"></i><i style="background:var(--band-3)"></i><i style="background:var(--band-4)"></i><i style="background:var(--band-5)"></i>
+        </span>
+        <span>Más tiempo</span>
+      </div>
+    </section>
+  </div>
+
+  <section class="block">
+    <header>
+      <h2>Exoneraciones por año</h2>
+      <span class="hint">1996–2024 · los años sin casos se muestran vacíos</span>
+    </header>
+    <div class="years" id="chart-anio"></div>
+    <div class="yraxis" id="axis-anio"></div>
+  </section>
+
+  <section class="block">
+    <header>
+      <h2>Personas</h2>
+      <span class="hint">Clic en un encabezado para ordenar</span>
+    </header>
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr>
+            <th data-sort="nombre" scope="col">Nombre</th>
+            <th data-sort="pais" scope="col">País</th>
+            <th data-sort="anio" scope="col">Año</th>
+            <th data-sort="servido" scope="col" aria-sort="descending">Años servidos</th>
+            <th data-sort="texto" scope="col">Tiempo servido</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+    <p class="empty" id="empty" hidden>Ningún caso coincide con los filtros activos.</p>
+  </section>
+
+  <footer class="foot">
+    <p><strong>Sobre los datos.</strong> Las duraciones aproximadas del sitio se convirtieron a
+      números para poder sumarlas y compararlas («casi 4 años» → 4; «más de 10 años» → 10).
+      Un caso (Enrique Patricio Venegas Santibáñez, Chile) no tiene tiempo servido
+      publicado, por lo que cuenta como caso pero no en los totales de años.</p>
+    <p><strong>Actualización.</strong> Esta página lee la hoja de cálculo de Inocente al
+      cargar. Si no puede alcanzarla, muestra la última instantánea incluida en el
+      archivo y lo indica arriba.</p>
+  </footer>
+</div>
+
+<div id="tip" role="status" aria-live="polite"></div>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ------------------------------------------------------------------
+     DATA SOURCE
+     Point this at the Google Sheet. The sheet must be shared
+     "anyone with the link can view" for the fetch to succeed.
+     Columns expected: Nombre, País, ..., Año de liberación, Fecha original,
+     Años servidos, Tiempo servido (texto)
+  ------------------------------------------------------------------ */
+  // Sheet B — Bijan's, on the Inocente account. As of this session it's
+  // still returning 401 (not shared publicly); this will silently fall
+  // back to SNAPSHOT below until someone with edit access sets sharing
+  // to "Anyone with the link → Viewer."
+  var SHEET_ID = "1TXYkR0F-nz4cZ-4D8YVGg6EAGu3amYQ3bsNc76F1t04";
+  var SHEET_GID = "461344518";
+  var SHEET_CSV = "https://docs.google.com/spreadsheets/d/" + SHEET_ID + "/gviz/tq?tqx=out:csv&gid=" + SHEET_GID;
+  var SNAPSHOT_DATE = "2 sept 2026";
+
+  /* Embedded snapshot: [nombre, país, año, años servidos (null = sin dato), texto] */
+  var SNAPSHOT = [
+["Alberto Martín Muñoz","Argentina",2022,13.5,"13 años y 6 meses"],
+["Cristina Vázquez","Argentina",2019,11,"11 años"],
+["Fernando Ariel Carrera","Argentina",2016,7.33,"7 años y 4 meses"],
+["Jorge González Nieva","Argentina",2020,14,"14 años"],
+["Lucía Cecilia Rojas","Argentina",2019,11,"11 años"],
+["Marcos Milla","Argentina",2017,4,"casi 4 años"],
+["Santos Clemente Vera","Argentina",2023,10,"más de 10 años"],
+["Sebastian Ariel Rodríguez","Argentina",2022,4.25,"4 años y 3 meses"],
+["Freddy Hinojosa","Bolivia",2012,8,"8 años"],
+["Jhiery Fernandez","Bolivia",2021,7,"7 años"],
+["Reynaldo Ramírez Valle","Bolivia",2017,2.17,"2 años y 2 meses"],
+["Antônio Cláudio Barbosa de Castro","Brasil",2019,4.92,"4 años y 11 meses"],
+["Atercino Ferreira de Lima Filho","Brasil",2018,0.92,"11 meses"],
+["Carlos Edmilson Silva","Brasil",2024,12,"12 años"],
+["Igor Barcelos Ortega","Brasil",2021,3,"3 años"],
+["Lucas Santos de Medeiros","Brasil",2024,8.89,"8 años, 10 meses, y 20 días"],
+["Michel Cleber","Brasil",2020,3.5,"3 años y 6 meses"],
+["Robert Medeiros Da Silva Santos","Brasil",2021,2.08,"2 años y 1 mes"],
+["Sílvio José Da Silva Marquez","Brasil",2021,5.96,"5 años, 11 meses, y 14 días"],
+["Enrique Patricio Venegas Santibáñez","Chile",2012,null,"sin dato publicado"],
+["Julio Robles Vergara","Chile",2014,1.58,"1 año y 7 meses"],
+["Pedro Lobos Para","Chile",2011,3,"3 años"],
+["Adolfo Gutierrez Malaver","Colombia",2013,11,"11 años"],
+["Alex Johan Borja Cortés","Colombia",2023,5,"5 años"],
+["Gilberto Torres Muñetón","Colombia",2017,11,"11 años"],
+["Manuel Mena","Colombia",2010,3,"3 años"],
+["Pablo Enrique Zamora Rodriguez","Colombia",1996,9,"9 años (8 en prisión y 1 en libertad condicional)"],
+["Luis Casas","Ecuador",2007,4,"4 años"],
+["Maria Teresa Rivera","El Salvador",2016,4.42,"4 años y 5 meses"],
+["Adriana Manzanares","México",2014,7,"7 años"],
+["Alberta Alcántara","México",2010,3,"3 años"],
+["Dominga González Martínez","México",2019,12,"12 años"],
+["Gonzalo García Hernández","México",2022,7.42,"7 años y 5 meses"],
+["Hector Muñoz Muñoz","México",2022,7.42,"7 años y 5 meses"],
+["Jacinta Francisco Marcial","México",2010,3,"3 años"],
+["Javier Cisneros Meza","México",2022,5,"5 años"],
+["José Antonio “Toño” Zuñiga Rodríguez","México",2008,3,"3 años"],
+["José Caraveo Velazquillo","México",2020,12,"12 años"],
+["Juan Luis López García","México",2022,7.42,"7 años y 5 meses"],
+["Omar Diaz","México",2021,4.06,"4 años y 22 días"],
+["Teresa González","México",2010,3,"3 años"],
+["Eric Volz","Nicaragua",2007,1.17,"14 meses"],
+["Jason Puracal","Nicaragua",2012,2,"2 años"],
+["David Elías Feliciano Pillaca","Perú",2012,6,"6 años"],
+["Ashley Marie Torres Feliciano","Puerto Rico",2021,11,"11 años"],
+["Eduardo Correa López","Puerto Rico",2021,14,"14 años"],
+["Jose Armando Torres Rivera","Puerto Rico",2016,20,"20 años"],
+["José A. Caro Pérez","Puerto Rico",2020,28,"28 años"],
+["José Julián Cruz Berríos","Puerto Rico",2020,11,"11 años"],
+["Nelson Ortiz Álvarez","Puerto Rico",2016,20,"20 años"],
+["Nelson Ruiz Colón","Puerto Rico",2016,20,"20 años"],
+["Roberto Anel Diaz Morales","Puerto Rico",2012,10,"10 años"],
+["Nicaury Lizbeth Encarnación Rocha","República Dominicana",2024,3,"3 años"],
+["Ricardo De La Fuente","Uruguay",2016,7,"7 años"]
+  ];
+
+  var BANDS = [
+    { key: "0–2",   label: "menos de 2", min: 0,  max: 2,        v: "var(--band-1)" },
+    { key: "2–5",   label: "2 a 5",      min: 2,  max: 5,        v: "var(--band-2)" },
+    { key: "5–10",  label: "5 a 10",     min: 5,  max: 10,       v: "var(--band-3)" },
+    { key: "10–20", label: "10 a 20",    min: 10, max: 20,       v: "var(--band-4)" },
+    { key: "20+",   label: "20 o más",   min: 20, max: Infinity, v: "var(--band-5)" }
+  ];
+
+  var rows = [];
+  var filters = { pais: null, anio: null, banda: null };
+  var sort = { key: "servido", dir: -1 };
+
+  var $ = function (id) { return document.getElementById(id); };
+
+  /* ---------- CSV parsing (handles quoted fields with commas) ---------- */
+  function parseCSV(text) {
+    var out = [], row = [], cur = "", q = false, i, c;
+    for (i = 0; i < text.length; i++) {
+      c = text[i];
+      if (q) {
+        if (c === '"') {
+          if (text[i + 1] === '"') { cur += '"'; i++; } else { q = false; }
+        } else { cur += c; }
+      } else if (c === '"') { q = true; }
+      else if (c === ",") { row.push(cur); cur = ""; }
+      else if (c === "\n") { row.push(cur); out.push(row); row = []; cur = ""; }
+      else if (c !== "\r") { cur += c; }
+    }
+    if (cur.length || row.length) { row.push(cur); out.push(row); }
+    return out.filter(function (r) { return r.some(function (v) { return v.trim() !== ""; }); });
+  }
+
+  function rowsFromSheet(text) {
+    var table = parseCSV(text);
+    if (table.length < 2) throw new Error("hoja vacía");
+    var head = table[0].map(function (h) { return h.trim().toLowerCase(); });
+    var iName = head.findIndex(function (h) { return h.indexOf("nombre") === 0; });
+    var iPais = head.findIndex(function (h) { return h === "país" || h === "pais"; });
+    var iAnio = head.findIndex(function (h) { return h.indexOf("año de liberaci") === 0; });
+    var iServ = head.findIndex(function (h) { return h.indexOf("años servidos") === 0; });
+    var iText = head.findIndex(function (h) { return h.indexOf("tiempo servido") === 0; });
+    if (iName < 0 || iPais < 0) throw new Error("faltan columnas");
+    return table.slice(1).map(function (r) {
+      var raw = iServ > -1 ? String(r[iServ] || "").trim().replace(",", ".") : "";
+      var serv = raw === "" ? null : parseFloat(raw);
+      return [
+        String(r[iName] || "").trim(),
+        String(r[iPais] || "").trim(),
+        iAnio > -1 ? parseInt(r[iAnio], 10) || null : null,
+        isNaN(serv) ? null : serv,
+        iText > -1 ? String(r[iText] || "").trim() : ""
+      ];
+    }).filter(function (r) { return r[0] && r[1]; });
+  }
+
+  function toObjects(arr) {
+    return arr.map(function (r) {
+      var band = null, i;
+      if (r[3] !== null) {
+        for (i = 0; i < BANDS.length; i++) {
+          if (r[3] >= BANDS[i].min && r[3] < BANDS[i].max) { band = BANDS[i].key; break; }
+        }
+      }
+      return { nombre: r[0], pais: r[1], anio: r[2], servido: r[3], texto: r[4], banda: band };
+    });
+  }
+
+  /* ---------- Crossfilter core: a chart is filtered by every dimension but its own ---------- */
+  function slice(except) {
+    return rows.filter(function (d) {
+      if (filters.pais && except !== "pais" && d.pais !== filters.pais) return false;
+      if (filters.anio && except !== "anio" && d.anio !== filters.anio) return false;
+      if (filters.banda && except !== "banda" && d.banda !== filters.banda) return false;
+      return true;
+    });
+  }
+
+  function fmt(n, dec) {
+    return n.toLocaleString("es", { minimumFractionDigits: dec || 0, maximumFractionDigits: dec || 0 });
+  }
+
+  /* ---------- Tooltip ---------- */
+  var tip = $("tip");
+  function showTip(e, html) {
+    tip.innerHTML = html;
+    tip.classList.add("show");
+    var pad = 14, r = tip.getBoundingClientRect();
+    var x = Math.min(e.clientX + pad, window.innerWidth - r.width - 8);
+    var y = Math.max(8, e.clientY - r.height - pad);
+    tip.style.left = x + "px";
+    tip.style.top = y + "px";
+  }
+  function hideTip() { tip.classList.remove("show"); }
+
+  /* ---------- Render ---------- */
+  function renderStats() {
+    var d = slice(null);
+    var withYears = d.filter(function (x) { return x.servido !== null; });
+    var total = withYears.reduce(function (a, b) { return a + b.servido; }, 0);
+    var avg = withYears.length ? total / withYears.length : 0;
+    var noData = d.length - withYears.length;
+
+    $("stat-casos").textContent = fmt(d.length);
+    $("stat-casos-sub").textContent = d.length === rows.length
+      ? "en " + new Set(d.map(function (x) { return x.pais; })).size + " países"
+      : "de " + fmt(rows.length) + " en total";
+
+    $("stat-anios").textContent = fmt(total);
+    $("stat-anios-sub").textContent = noData
+      ? fmt(noData) + (noData === 1 ? " caso sin duración publicada" : " casos sin duración publicada")
+      : "sumados entre todas las personas";
+
+    $("stat-prom").textContent = withYears.length ? fmt(avg, 1) : "—";
+    $("stat-prom-sub").textContent = withYears.length ? "años por persona" : "sin datos de duración";
+  }
+
+  function renderPais() {
+    var d = slice("pais");
+    var counts = {};
+    d.forEach(function (x) { counts[x.pais] = (counts[x.pais] || 0) + 1; });
+    rows.forEach(function (x) { if (!(x.pais in counts)) counts[x.pais] = 0; });
+
+    var list = Object.keys(counts).map(function (k) { return { k: k, n: counts[k] }; })
+      .sort(function (a, b) { return b.n - a.n || a.k.localeCompare(b.k, "es"); });
+    var max = Math.max.apply(null, list.map(function (x) { return x.n; })) || 1;
+
+    var host = $("chart-pais");
+    host.textContent = "";
+    list.forEach(function (item) {
+      var active = filters.pais === item.k;
+      var b = document.createElement("button");
+      b.type = "button";
+      b.className = "row" + (active ? " on" : (filters.pais ? " off" : ""));
+      b.setAttribute("aria-pressed", active ? "true" : "false");
+      b.setAttribute("aria-label", item.k + ": " + item.n + (item.n === 1 ? " caso" : " casos"));
+      b.innerHTML =
+        '<span class="name">' + esc(item.k) + '</span>' +
+        '<span class="track"><span class="fill" style="width:' + (item.n / max * 100) + '%"></span></span>' +
+        '<span class="n">' + item.n + '</span>';
+      b.addEventListener("click", function () { toggle("pais", item.k); });
+      b.addEventListener("mousemove", function (e) {
+        showTip(e, "<b>" + esc(item.k) + "</b><br>" + item.n + (item.n === 1 ? " caso" : " casos"));
+      });
+      b.addEventListener("mouseleave", hideTip);
+      host.appendChild(b);
+    });
+  }
+
+  /* ---------- Map (Step 1 scaffold) ----------
+     Loads the geography and draws every country shape. Does NOT color by
+     count and does NOT filter anything yet — that's Step 2/3, for you.
+
+     GEO_TO_ES translates the GeoJSON's country names (English, from
+     Natural Earth — this is what's baked into latam.geojson) to the
+     Spanish strings that show up in this sheet's "País" column. You need
+     this because a country click has to call toggle("pais", ...) with a
+     value that matches what's actually in `rows` — the geojson's raw
+     name won't match. "Dominican Rep." (not "Dominican Republic") is the
+     one most likely to bite you if you type it from memory instead of
+     reading it off this table. */
+  var GEO_TO_ES = {
+    "Mexico": "México", "Argentina": "Argentina", "Brazil": "Brasil",
+    "Puerto Rico": "Puerto Rico", "Colombia": "Colombia", "Bolivia": "Bolivia",
+    "Chile": "Chile", "Nicaragua": "Nicaragua", "Ecuador": "Ecuador",
+    "El Salvador": "El Salvador", "Peru": "Perú",
+    "Dominican Rep.": "República Dominicana", "Uruguay": "Uruguay"
+  };
+
+  // Discrete threshold scale, already validated (monotone lightness,
+  // visible steps). Domain [2,4,6,10] → 5 buckets. Re-run the validator
+  // before changing these rather than re-picking by eye.
+  var mapColor = d3.scaleThreshold()
+    .domain([2, 4, 6, 10])
+    .range([
+      getComputedStyle(document.documentElement).getPropertyValue("--map-bin1").trim(),
+      getComputedStyle(document.documentElement).getPropertyValue("--map-bin2").trim(),
+      getComputedStyle(document.documentElement).getPropertyValue("--map-bin3").trim(),
+      getComputedStyle(document.documentElement).getPropertyValue("--map-bin4").trim(),
+      getComputedStyle(document.documentElement).getPropertyValue("--map-bin5").trim()
+    ]);
+
+  var mapSvg = d3.select("#map");
+  var MAP_W = 760, MAP_H = 620;
+  mapSvg.attr("viewBox", [0, 0, MAP_W, MAP_H]);
+  var mapPaths = null; // set once geojson resolves; Step 2 reads/writes this
+
+  d3.json("latam.geojson").then(function (geo) {
+    var projection = d3.geoProjection(d3.geoMercatorRaw).fitSize([MAP_W, MAP_H], geo);
+    var path = d3.geoPath(projection);
+
+    mapPaths = mapSvg.append("g")
+      .selectAll("path")
+      .data(geo.features)
+      .join("path")
+        .attr("d", path)
+        .attr("class", "country")
+        .attr("fill", "var(--map-nodata)")
+        .on("click", function (event, d) {
+          var es = GEO_TO_ES[d.properties.name];
+          if (es) toggle("pais", es);
+        })
+        .on("mousemove", function (event, d) {
+          var es = GEO_TO_ES[d.properties.name];
+          if (!es) return hideTip();
+          var n = mapCounts[es] || 0;
+          if (!n) return hideTip();
+          showTip(event, "<b>" + esc(es) + "</b><br>" + n + (n === 1 ? " caso" : " casos"));
+        })
+        .on("mouseleave", hideTip);
+
+    renderMapa();
+  });
+
+  // Counts from the last renderMapa() call, kept around so the hover
+  // handler above (bound once, at load) can read current numbers
+  // without recomputing them on every mousemove.
+  var mapCounts = {};
+
+  function renderMapa() {
+    if (!mapPaths) return; // geojson hasn't resolved yet
+    var d = slice("pais"); // respects every filter except pais — including
+                            // anio, which is exactly the Step 4 behavior:
+                            // an active year filter already narrows this.
+    mapCounts = {};
+    d.forEach(function (x) { mapCounts[x.pais] = (mapCounts[x.pais] || 0) + 1; });
+
+    mapPaths
+      .attr("fill", function (d) {
+        var es = GEO_TO_ES[d.properties.name];
+        var n = es ? (mapCounts[es] || 0) : 0;
+        return n > 0 ? mapColor(n) : "var(--map-nodata)";
+      })
+      .attr("class", function (d) {
+        var es = GEO_TO_ES[d.properties.name];
+        var n = es ? (mapCounts[es] || 0) : 0;
+        var cls = "country";
+        if (n > 0) cls += " has-data";
+        if (filters.pais && filters.pais === es) cls += " selected";
+        else if (filters.pais) cls += " dimmed";
+        return cls;
+      });
+
+    // TEMP DEBUG — remove once this is confirmed working.
+    console.log("[renderMapa]", "rows.length =", rows.length, "mapCounts =", mapCounts);
+  }
+
+  function renderBandas() {
+    var d = slice("banda");
+    var counts = {};
+    d.forEach(function (x) { if (x.banda) counts[x.banda] = (counts[x.banda] || 0) + 1; });
+    var max = Math.max.apply(null, BANDS.map(function (b) { return counts[b.key] || 0; })) || 1;
+
+    var host = $("chart-banda");
+    host.textContent = "";
+    BANDS.forEach(function (band) {
+      var n = counts[band.key] || 0;
+      var active = filters.banda === band.key;
+      var b = document.createElement("button");
+      b.type = "button";
+      b.className = "band" + (active ? " on" : (filters.banda ? " off" : ""));
+      b.setAttribute("aria-pressed", active ? "true" : "false");
+      b.setAttribute("aria-label", band.label + " años: " + n + (n === 1 ? " persona" : " personas"));
+      b.innerHTML =
+        '<span class="name">' + esc(band.label) + '</span>' +
+        '<span class="track"><span class="fill" style="width:' + (n / max * 100) + '%;background:' + band.v + '"></span></span>' +
+        '<span class="n">' + n + '</span>';
+      b.addEventListener("click", function () { toggle("banda", band.key); });
+      b.addEventListener("mousemove", function (e) {
+        showTip(e, "<b>" + esc(band.label) + " años</b><br>" + n + (n === 1 ? " persona" : " personas"));
+      });
+      b.addEventListener("mouseleave", hideTip);
+      host.appendChild(b);
+    });
+  }
+
+  function renderAnios() {
+    var d = slice("anio");
+    var years = rows.map(function (x) { return x.anio; }).filter(Boolean);
+    var lo = Math.min.apply(null, years), hi = Math.max.apply(null, years);
+    var counts = {};
+    d.forEach(function (x) { if (x.anio) counts[x.anio] = (counts[x.anio] || 0) + 1; });
+    var max = Math.max.apply(null, Object.keys(counts).map(function (k) { return counts[k]; }).concat([1]));
+
+    var host = $("chart-anio"), axis = $("axis-anio"), y;
+    host.textContent = ""; axis.textContent = "";
+    for (y = lo; y <= hi; y++) {
+      (function (year) {
+        var n = counts[year] || 0;
+        var active = filters.anio === year;
+        var b = document.createElement("button");
+        b.type = "button";
+        b.className = "yr" + (active ? " on" : (filters.anio ? " off" : ""));
+        b.setAttribute("aria-pressed", active ? "true" : "false");
+        b.setAttribute("aria-label", year + ": " + n + " exoneraciones");
+        var col = document.createElement("span");
+        col.className = "col" + (n === 0 ? " zero" : "");
+        col.style.height = n === 0 ? "2px" : (n / max * 100) + "%";
+        b.appendChild(col);
+        b.addEventListener("click", function () { if (n > 0 || active) toggle("anio", year); });
+        b.addEventListener("mousemove", function (e) {
+          showTip(e, "<b>" + year + "</b><br>" + n + (n === 1 ? " exoneración" : " exoneraciones"));
+        });
+        b.addEventListener("mouseleave", hideTip);
+        host.appendChild(b);
+
+        var t = document.createElement("span");
+        t.textContent = (year % 5 === 0 || year === lo || year === hi) ? String(year).slice(2) : "";
+        axis.appendChild(t);
+      })(y);
+    }
+  }
+
+  function heatColor(v, max) {
+    // continuous sequential ramp, light -> dark, interpolated in sRGB
+    var a = getComputedStyle(document.documentElement).getPropertyValue("--heat-0").trim();
+    var b = getComputedStyle(document.documentElement).getPropertyValue("--heat-1").trim();
+    var t = max > 0 ? Math.min(1, Math.max(0, v / max)) : 0;
+    var pa = hex2rgb(a), pb = hex2rgb(b);
+    if (!pa || !pb) return b;
+    return "rgb(" + Math.round(pa[0] + (pb[0] - pa[0]) * t) + "," +
+                    Math.round(pa[1] + (pb[1] - pa[1]) * t) + "," +
+                    Math.round(pa[2] + (pb[2] - pa[2]) * t) + ")";
+  }
+  function hex2rgb(h) {
+    var m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(h);
+    return m ? [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)] : null;
+  }
+
+  function renderTable() {
+    var d = slice(null).slice();
+    var maxServ = Math.max.apply(null, rows.map(function (x) { return x.servido || 0; })) || 1;
+
+    d.sort(function (a, b) {
+      var k = sort.key, va = a[k], vb = b[k];
+      if (va === null || va === undefined) return 1;
+      if (vb === null || vb === undefined) return -1;
+      if (typeof va === "string") return sort.dir * va.localeCompare(vb, "es");
+      return sort.dir * (va - vb);
+    });
+
+    var tb = $("tbody");
+    tb.textContent = "";
+    d.forEach(function (x) {
+      var tr = document.createElement("tr");
+      tr.innerHTML =
+        '<td class="nombre">' + esc(x.nombre) + '</td>' +
+        '<td>' + esc(x.pais) + '</td>' +
+        '<td class="num">' + (x.anio || "—") + '</td>' +
+        '<td class="num">' + (x.servido === null ? "—" :
+          '<span class="heatcell"><span class="sw" style="background:' + heatColor(x.servido, maxServ) + '"></span>' +
+          fmt(x.servido, x.servido % 1 ? 2 : 0) + '</span>') + '</td>' +
+        '<td>' + esc(x.texto || "—") + '</td>';
+      tb.appendChild(tr);
+    });
+    $("empty").hidden = d.length > 0;
+  }
+
+  function renderFilters() {
+    var bar = $("filterbar");
+    bar.textContent = "";
+    var lbl = document.createElement("span");
+    lbl.className = "label";
+    lbl.textContent = "Filtros";
+    bar.appendChild(lbl);
+
+    var any = false;
+    [["pais", "País"], ["anio", "Año"], ["banda", "Años servidos"]].forEach(function (pair) {
+      var val = filters[pair[0]];
+      if (val === null) return;
+      any = true;
+      var b = document.createElement("button");
+      b.type = "button";
+      b.className = "chip";
+      b.innerHTML = '<span>' + pair[1] + ': <b>' + esc(String(val)) + '</b></span><span class="x" aria-hidden="true">×</span>';
+      b.setAttribute("aria-label", "Quitar filtro " + pair[1] + " " + val);
+      b.addEventListener("click", function () { filters[pair[0]] = null; renderAll(); });
+      bar.appendChild(b);
+    });
+
+    if (!any) {
+      var none = document.createElement("span");
+      none.className = "no-filter";
+      none.textContent = "ninguno — mostrando los " + rows.length + " casos";
+      bar.appendChild(none);
+    } else {
+      var r = document.createElement("button");
+      r.type = "button";
+      r.className = "chip chip-reset";
+      r.textContent = "Quitar todos";
+      r.addEventListener("click", function () {
+        filters = { pais: null, anio: null, banda: null };
+        renderAll();
+      });
+      bar.appendChild(r);
+    }
+  }
+
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+
+  function toggle(dim, val) {
+    filters[dim] = filters[dim] === val ? null : val;
+    hideTip();
+    renderAll();
+  }
+
+  function renderAll() {
+    renderFilters();
+    renderStats();
+    renderPais();
+    renderMapa();
+    renderBandas();
+    renderAnios();
+    renderTable();
+  }
+
+  /* ---------- Sorting ---------- */
+  Array.prototype.forEach.call(document.querySelectorAll("thead th[data-sort]"), function (th) {
+    th.addEventListener("click", function () {
+      var k = th.getAttribute("data-sort");
+      if (sort.key === k) { sort.dir *= -1; } else { sort.key = k; sort.dir = (k === "nombre" || k === "pais" || k === "texto") ? 1 : -1; }
+      Array.prototype.forEach.call(document.querySelectorAll("thead th"), function (o) { o.removeAttribute("aria-sort"); });
+      th.setAttribute("aria-sort", sort.dir === 1 ? "ascending" : "descending");
+      renderTable();
+    });
+  });
+
+  /* ---------- Boot: live sheet first, embedded snapshot as fallback ---------- */
+  function boot(data, stateText) {
+    rows = toObjects(data);
+    $("sync-state").textContent = stateText;
+    renderAll();
+  }
+
+  var settled = false;
+  var timer = setTimeout(function () {
+    if (!settled) { settled = true; boot(SNAPSHOT, "Instantánea del " + SNAPSHOT_DATE); }
+  }, 4000);
+
+  try {
+    fetch(SHEET_CSV, { mode: "cors" })
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.text(); })
+      .then(function (t) {
+        if (settled) return;
+        var parsed = rowsFromSheet(t);
+        if (!parsed.length) throw new Error("sin filas");
+        settled = true; clearTimeout(timer);
+        boot(parsed, "Datos en vivo desde Google Sheets");
+      })
+      .catch(function () {
+        if (settled) return;
+        settled = true; clearTimeout(timer);
+        boot(SNAPSHOT, "Instantánea del " + SNAPSHOT_DATE);
+      });
+  } catch (e) {
+    if (!settled) { settled = true; clearTimeout(timer); boot(SNAPSHOT, "Instantánea del " + SNAPSHOT_DATE); }
+  }
+})();
+</script>
+
+</body>
+</html>

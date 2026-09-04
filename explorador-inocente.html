@@ -367,6 +367,12 @@
   </section>
 
   <!-- ---- Map (Step 1 scaffold) ----
+       Shapes only for now — every country renders in --map-nodata gray.
+       No fill-by-count and no click→filter yet. That's Step 2/3, and it
+       belongs in the SAME <script> closure below as renderPais() etc.
+       (see the big TODO comment near GEO_TO_ES) — filters, slice, toggle,
+       and renderAll are all private to that closure, so a separate
+       <script> tag could not reach them even if it tried. -->
   <section class="block">
     <header>
       <h2>Mapa de casos</h2>
@@ -437,6 +443,16 @@
     </div>
     <p class="empty" id="empty" hidden>Ningún caso coincide con los filtros activos.</p>
   </section>
+
+  <footer class="foot">
+    <p><strong>Sobre los datos.</strong> Las duraciones aproximadas del sitio se convirtieron a
+      números para poder sumarlas y compararlas («casi 4 años» → 4; «más de 10 años» → 10).
+      Un caso (Enrique Patricio Venegas Santibáñez, Chile) no tiene tiempo servido
+      publicado, por lo que cuenta como caso pero no en los totales de años.</p>
+    <p><strong>Actualización.</strong> Esta página lee la hoja de cálculo de Inocente al
+      cargar. Si no puede alcanzarla, muestra la última instantánea incluida en el
+      archivo y lo indica arriba.</p>
+  </footer>
 </div>
 
 <div id="tip" role="status" aria-live="polite"></div>
@@ -452,6 +468,10 @@
      Columns expected: Nombre, País, ..., Año de liberación, Fecha original,
      Años servidos, Tiempo servido (texto)
   ------------------------------------------------------------------ */
+  // Sheet B — Bijan's, on the Inocente account. As of this session it's
+  // still returning 401 (not shared publicly); this will silently fall
+  // back to SNAPSHOT below until someone with edit access sets sharing
+  // to "Anyone with the link → Viewer."
   var SHEET_ID = "1TXYkR0F-nz4cZ-4D8YVGg6EAGu3amYQ3bsNc76F1t04";
   var SHEET_GID = "461344518";
   var SHEET_CSV = "https://docs.google.com/spreadsheets/d/" + SHEET_ID + "/gviz/tq?tqx=out:csv&gid=" + SHEET_GID;
